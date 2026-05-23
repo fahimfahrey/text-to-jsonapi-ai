@@ -27,6 +27,16 @@ export default function Home() {
     setErrorMessage(null)
     setOutputData(null)
 
+    if (rawText.trim().length === 0) {
+      setErrorMessage('Text is required — paste something to extract from.')
+      return
+    }
+
+    if (schema.trim().length === 0) {
+      setErrorMessage('Schema is required — describe the shape you want back.')
+      return
+    }
+
     let parsedSchema: unknown
     try {
       parsedSchema = JSON.parse(schema)
@@ -215,9 +225,21 @@ function Output({
   }
   if (errorMessage) {
     return (
-      <p className="font-[family-name:var(--font-geist-mono)] text-xs text-[#ff6b6b]">
-        error · {errorMessage}
-      </p>
+      <div
+        role="alert"
+        className="relative border border-[#ff6b6b]/40 bg-[#ff6b6b]/[0.08] px-4 py-3 pl-5"
+      >
+        <span
+          aria-hidden
+          className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#ff6b6b]"
+        />
+        <p className="font-[family-name:var(--font-geist-mono)] text-[10px] uppercase tracking-[0.35em] text-[#ff6b6b]">
+          error
+        </p>
+        <p className="mt-1.5 font-[family-name:var(--font-geist-mono)] text-[12px] leading-[1.6] text-[#ffb3b3] break-words">
+          {errorMessage}
+        </p>
+      </div>
     )
   }
   if (outputData !== null) {
