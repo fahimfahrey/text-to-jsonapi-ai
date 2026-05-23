@@ -15,55 +15,47 @@ const SCHEMA_PLACEHOLDER = `{
 const TEXT_PLACEHOLDER =
   'Paste an email, a memo, a meeting transcript, a job posting, an invoice — anything with structure waiting to be discovered.'
 
-type ParseResult =
-  | { kind: 'idle' }
-  | { kind: 'loading' }
-  | { kind: 'ok'; data: unknown }
-  | { kind: 'err'; message: string; raw?: string }
-
 export default function Home() {
-  const [text, setText] = useState('')
+  const [rawText, setRawText] = useState('')
   const [schema, setSchema] = useState(SCHEMA_PLACEHOLDER)
-  const [result, setResult] = useState<ParseResult>({ kind: 'idle' })
+  const [outputData, setOutputData] = useState<unknown>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setErrorMessage(null)
+    setOutputData(null)
 
     let parsedSchema: unknown
     try {
       parsedSchema = JSON.parse(schema)
     } catch (err) {
-      setResult({
-        kind: 'err',
-        message: `Schema is not valid JSON — ${(err as Error).message}`,
-      })
+      setErrorMessage(`Schema is not valid JSON — ${(err as Error).message}`)
       return
     }
 
-    setResult({ kind: 'loading' })
-
+    setIsLoading(true)
     try {
       const res = await fetch('/api/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, schema: parsedSchema }),
+        body: JSON.stringify({ text: rawText, schema: parsedSchema }),
       })
       const payload = await res.json()
       if (!res.ok) {
-        setResult({
-          kind: 'err',
-          message: payload?.error ?? `Request failed (${res.status})`,
-          raw: payload?.raw,
-        })
+        setErrorMessage(payload?.error ?? `Request failed (${res.status})`)
         return
       }
-      setResult({ kind: 'ok', data: payload.data })
+      setOutputData(payload.data ?? payload)
     } catch (err) {
-      setResult({ kind: 'err', message: (err as Error).message })
+      setErrorMessage((err as Error).message)
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const disabled = result.kind === 'loading' || text.trim().length === 0
+  const disabled = isLoading || rawText.trim().length === 0
 
   return (
     <main className="min-h-screen bg-[#0a0a0a] text-[#ededed] font-[family-name:var(--font-geist-sans)] selection:bg-[#d4ff3a] selection:text-black">
@@ -104,8 +96,8 @@ export default function Home() {
             border="lg:border-r"
           >
             <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
+              value={rawText}
+              onChange={(e) => setRawText(e.target.value)}
               placeholder={TEXT_PLACEHOLDER}
               spellCheck={false}
               className="w-full h-[44vh] lg:h-[58vh] resize-none bg-transparent text-[15px] leading-[1.7] text-[#ededed] placeholder:text-[#3a3a3a] outline-none"
@@ -133,7 +125,11 @@ export default function Home() {
                 03 / output
               </p>
               <div className="mt-3 min-h-[3rem]">
-                <Output result={result} />
+                <Output
+                  isLoading={isLoading}
+                  errorMessage={errorMessage}
+                  outputData={outputData}
+                />
               </div>
             </div>
 
@@ -143,7 +139,7 @@ export default function Home() {
               className="col-span-12 md:col-span-5 relative bg-[#d4ff3a] text-black font-[family-name:var(--font-geist-mono)] text-sm uppercase tracking-[0.3em] enabled:hover:bg-[#c1ec1e] disabled:bg-[#1a1a1a] disabled:text-[#444] disabled:cursor-not-allowed transition-colors min-h-[5.5rem] flex items-center justify-center"
             >
               <span className="flex items-center gap-3">
-                {result.kind === 'loading' ? (
+                {isLoading ? (
                   <>
                     <Spinner />
                     extracting…
@@ -201,39 +197,40 @@ function Panel({
   )
 }
 
-function Output({ result }: { result: ParseResult }) {
-  if (result.kind === 'idle') {
-    return (
-      <p className="font-[family-name:var(--font-geist-mono)] text-xs text-[#555]">
-        awaiting input — press extract to run.
-      </p>
-    )
-  }
-  if (result.kind === 'loading') {
+function Output({
+  isLoading,
+  errorMessage,
+  outputData,
+}: {
+  isLoading: boolean
+  errorMessage: string | null
+  outputData: unknown
+}) {
+  if (isLoading) {
     return (
       <p className="font-[family-name:var(--font-geist-mono)] text-xs text-[#888] flex items-center gap-2">
         <Spinner /> contacting edge model…
       </p>
     )
   }
-  if (result.kind === 'err') {
+  if (errorMessage) {
     return (
-      <div className="space-y-2">
-        <p className="font-[family-name:var(--font-geist-mono)] text-xs text-[#ff6b6b]">
-          error · {result.message}
-        </p>
-        {result.raw && (
-          <pre className="font-[family-name:var(--font-geist-mono)] text-[11px] leading-[1.6] text-[#666] whitespace-pre-wrap break-words max-h-40 overflow-auto border-l border-[#2a2a2a] pl-3">
-            {result.raw}
-          </pre>
-        )}
-      </div>
+      <p className="font-[family-name:var(--font-geist-mono)] text-xs text-[#ff6b6b]">
+        error · {errorMessage}
+      </p>
+    )
+  }
+  if (outputData !== null) {
+    return (
+      <pre className="font-[family-name:var(--font-geist-mono)] text-[12px] leading-[1.7] text-[#d4ff3a] whitespace-pre-wrap break-words max-h-64 overflow-auto">
+        {JSON.stringify(outputData, null, 2)}
+      </pre>
     )
   }
   return (
-    <pre className="font-[family-name:var(--font-geist-mono)] text-[12px] leading-[1.7] text-[#d4ff3a] whitespace-pre-wrap break-words max-h-64 overflow-auto">
-      {JSON.stringify(result.data, null, 2)}
-    </pre>
+    <p className="font-[family-name:var(--font-geist-mono)] text-xs text-[#555]">
+      awaiting input — press extract to run.
+    </p>
   )
 }
 
